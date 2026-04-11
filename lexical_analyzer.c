@@ -77,13 +77,99 @@ char *createString(const char *pStart, const char *pEnd) { // helper func to sto
 }
 
 int getNextToken() {
-    int state = 0, nCh;
+    int nCh;
     char ch;
     const char *pStartCh;
     Token *tk;
 
     while (1) {
         ch = *pCrtCh;
+
+        if (ch == ' ' || ch == '\r' || ch == '\t') {
+            pCrtCh++;
+            continue;
+        }
+        if (ch == '\n') {
+            line++;
+            pCrtCh++;
+            continue;
+        }
+        if (ch == 0) {
+            addTk(END);
+            return END;
+        }
+
+        if (isalpha((unsigned char)ch) || ch == '_') {
+            pStartCh = pCrtCh;
+            pCrtCh++;
+            while(isalnum((unsigned char)*pCrtCh) || *pCrtCh == '_') pCrtCh++;
+            nCh = (int)(pCrtCh - pStartCh);
+
+            int kw = isKeyword(pStartCh, nCh);
+            if(kw != -1){
+                addTk(kw);
+                return kw;
+            }
+
+            tk = addTk(ID);
+            tk->text = createString(pStartCh, pCrtCh);
+            return ID;
+        }
+
+        if(isdigit((unsigned char)ch)){
+            char *endptr;
+
+            if(ch == '0' && (pCrtCh[1] == 'x' || pCrtCh[1] == 'X')){
+                pStartCh = pCrtCh;
+                pCrtCh += 2;
+                if(!isxdigit((unsigned char)*pCrtCh)){
+                    tkerr(NULL, "invalid hexadecimal constant");
+                }
+                while(isxdigit((unsigned char)*pCrtCh)) pCrtCh++;
+                tk = addTk(CT_INT);
+                tk->i = strtol(pStartCh, &endptr, 0);
+                return CT_INT;
+            }
+
+            pStartCh = pCrtCh;
+            while(isdigit((unsigned char)*pCrtCh)) pCrtCh++;
+
+            if(*pCrtCh == '.' || *pCrtCh == 'e' || *pCrtCh == 'E'){
+                if(*pCrtCh == '.'){
+                    pCrtCh++;
+                    if(!isdigit((unsigned char)*pCrtCh)){
+                        tkerr(NULL, "invalid real constant");
+                    }
+                    while(isdigit((unsigned char)*pCrtCh)) pCrtCh++;
+                }
+                if(*pCrtCh == 'e' || *pCrtCh == 'E'){
+                    pCrtCh++;
+                    if(*pCrtCh == '+' || *pCrtCh == '-') pCrtCh++;
+                    if(!isdigit((unsigned char)*pCrtCh)){
+                        tkerr(NULL, "invalid exponent in real constant");
+                    }
+                    while(isdigit((unsigned char)*pCrtCh)) pCrtCh++;
+                }
+
+                tk = addTk(CT_REAL);
+                tk->r = strtod(pStartCh, &endptr);
+                return CT_REAL;
+            }
+
+            if(pStartCh[0] == '0' && (pCrtCh - pStartCh) > 1){
+                const char *p = pStartCh + 1;
+                while(p < pCrtCh){
+                    if(*p < '0' || *p > '7'){
+                        tkerr(NULL, "invalid octal constant");
+                    }
+                    p++;
+                }
+            }
+
+            tk = addTk(CT_INT);
+            tk->i = strtol(pStartCh, &endptr, 0);
+            return CT_INT;
+        }
 
         switch (state) {
             case 0:
@@ -246,6 +332,17 @@ void showTokens(Token *tokens) {
     }
 }
 
+void freeTokens(Token *tokens) {
+    Token *tk = tokens, *aux;
+    while(tk){
+        aux = tk;
+        tk = tk->next;
+        if(aux->code == ID || aux->code == CT_STRING){
+            free(aux->text);
+        }
+        free(aux);
+    }
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -265,6 +362,7 @@ int main(int argc, char *argv[]) {
 
     showTokens(tokens); 
 
+    freeTokens(tokens);
     free(buffer);
 
     return 0;
