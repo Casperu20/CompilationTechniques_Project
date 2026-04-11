@@ -9,8 +9,7 @@ enum{ID, END,
     BREAK, CHAR, DOUBLE, ELSE, FOR, IF, INT, RETURN, STRUCT, VOID, WHILE,
     COMMA, SEMICOLON, LPAR, RPAR, LBRACKET, RBRACKET, LACC, RACC,
     ADD, SUB, MUL, DIV, DOT,
-    AND, OR, NOT,
-    ASSIGN, EQUAL, NOTEQ, LESS, LESSEQ, GREATER, GREATEREQ
+    AND, OR, NOT, ASSIGN, EQUAL, NOTEQ, LESS, LESSEQ, GREATER, GREATEREQ
 }; // tokens codes
 
 typedef struct _Token{
@@ -74,6 +73,39 @@ char *createString(const char *pStart, const char *pEnd) { // helper func to sto
     memcpy(str, pStart, (size_t)length);
     str[length] = '\0';
     return str;
+}
+
+static int isKeyword(const char *pStartCh, int nCh){
+    if(nCh == 5 && !memcmp(pStartCh, "break", 5)) return BREAK;
+    if(nCh == 4 && !memcmp(pStartCh, "char", 4)) return CHAR;
+    if(nCh == 6 && !memcmp(pStartCh, "double", 6)) return DOUBLE;
+    if(nCh == 4 && !memcmp(pStartCh, "else", 4)) return ELSE;
+    if(nCh == 3 && !memcmp(pStartCh, "for", 3)) return FOR;
+    if(nCh == 2 && !memcmp(pStartCh, "if", 2)) return IF;
+    if(nCh == 3 && !memcmp(pStartCh, "int", 3)) return INT;
+    if(nCh == 6 && !memcmp(pStartCh, "return", 6)) return RETURN;
+    if(nCh == 6 && !memcmp(pStartCh, "struct", 6)) return STRUCT;
+    if(nCh == 4 && !memcmp(pStartCh, "void", 4)) return VOID;
+    if(nCh == 5 && !memcmp(pStartCh, "while", 5)) return WHILE;
+    return -1;
+}
+
+static int decodeEscape(int c){
+    switch(c){
+        case 'a': return '\a';
+        case 'b': return '\b';
+        case 'f': return '\f';
+        case 'n': return '\n';
+        case 'r': return '\r';
+        case 't': return '\t';
+        case 'v': return '\v';
+        case '\'': return '\'';
+        case '"': return '"';
+        case '?': return '?';
+        case '\\': return '\\';
+        case '0': return '\0';
+        default: return -1;
+    }
 }
 
 int getNextToken() {
@@ -171,60 +203,185 @@ int getNextToken() {
             return CT_INT;
         }
 
-        switch (state) {
-            case 0:
-                if (isalpha(ch) || ch == '_') {
-                    pStartCh = pCrtCh;
-                    pCrtCh++;
-                    state = 1;
-                } else if (ch == '=') {
-                    pCrtCh++;
-                    state = 3;
-                } else if (ch == ' ' || ch == '\r' || ch == '\t') {
-                    pCrtCh++;
-                } else if (ch == '\n') {
-                    line++;
-                    pCrtCh++;
-                } else if (ch == 0) {
-                    addTk(END);
-                    return END;
-                } else {
-                    tkerr(addTk(END), "invalid character");
+        if(ch == '\''){
+            int c;
+            pCrtCh++;
+            if(*pCrtCh == '\\'){
+                pCrtCh++;
+                c = decodeEscape((unsigned char)*pCrtCh);
+                if(c == -1) tkerr(NULL, "invalid escape sequence in char constant");
+                pCrtCh++;
+            }else{
+                if(*pCrtCh == '\'' || *pCrtCh == '\n' || *pCrtCh == '\r' || *pCrtCh == 0){
+                    tkerr(NULL, "invalid char constant");
                 }
-                break;
+                c = (unsigned char)*pCrtCh;
+                pCrtCh++;
+            }
+            if(*pCrtCh != '\'') tkerr(NULL, "missing closing quote in char constant");
+            pCrtCh++;
+            tk = addTk(CT_CHAR);
+            tk->i = c;
+            return CT_CHAR;
+        }
 
-            case 1:
-                if (isalnum(ch) || ch == '_') {
+        if(ch == '"'){
+            char *buf, *dst;
+            size_t cap = 16, len = 0;
+            pCrtCh++;
+            buf = (char *)malloc(cap);
+            if(!buf) err("not enough memory");
+
+            while(*pCrtCh != '"'){
+                int c;
+                if(*pCrtCh == 0 || *pCrtCh == '\n' || *pCrtCh == '\r'){
+                    free(buf);
+                    tkerr(NULL, "unterminated string literal");
+                }
+                if(*pCrtCh == '\\'){
                     pCrtCh++;
-                } else {
-                    state = 2;
+                    c = decodeEscape((unsigned char)*pCrtCh);
+                    if(c == -1){
+                        free(buf);
+                        tkerr(NULL, "invalid escape sequence in string");
+                    }
+                    pCrtCh++;
+                }else{
+                    c = (unsigned char)*pCrtCh;
+                    pCrtCh++;
                 }
-                break;
 
-            case 2:
-                nCh = pCrtCh - pStartCh;
-                tk = (nCh == 5 && !memcmp(pStartCh, "break", 5)) ? addTk(BREAK) :
-                     (nCh == 4 && !memcmp(pStartCh, "char", 4)) ? addTk(CHAR) :
-                     NULL;
-                
-                if (!tk) {
-                    tk = addTk(ID);
-                    tk->text = createString(pStartCh, pCrtCh);
+                if(len + 1 >= cap){
+                    cap *= 2;
+                    dst = (char *)realloc(buf, cap);
+                    if(!dst){
+                        free(buf);
+                        err("not enough memory");
+                    }
+                    buf = dst;
                 }
-                return tk->code;
+                buf[len++] = (char)c;
+            }
+            pCrtCh++;
+            buf[len] = '\0';
 
-            case 3:
-                state = (ch == '=') ? 4 : 5;
-                if (state == 4) pCrtCh++;
+            tk = addTk(CT_STRING);
+            tk->text = buf;
+            return CT_STRING;
+        }
+
+        switch (ch) { // now inside the switch ill handle operators and separators
+            case ',':
+                pCrtCh++;
+                addTk(COMMA);
+                return COMMA;
+            case ';':
+                pCrtCh++;
+                addTk(SEMICOLON);
+                return SEMICOLON;
+            case '(':
+                pCrtCh++;
+                addTk(LPAR);
+                return LPAR;
+            case ')':
+                pCrtCh++;
+                addTk(RPAR);
+                return RPAR;
+            case '[':
+                pCrtCh++;
+                addTk(LBRACKET);
+                return LBRACKET;
+            case ']':
+                pCrtCh++;
+                addTk(RBRACKET);
+                return RBRACKET;
+            case '{':
+                pCrtCh++;
+                addTk(LACC);
+                return LACC;
+            case '}':
+                pCrtCh++;
+                addTk(RACC);
+                return RACC;
+            case '+':
+                pCrtCh++;
+                addTk(ADD);
+                return ADD;
+            case '-':
+                pCrtCh++;
+                addTk(SUB);
+                return SUB;
+            case '*':
+                pCrtCh++;
+                addTk(MUL);
+                return MUL;
+            case '.':
+                pCrtCh++;
+                addTk(DOT);
+                return DOT;
+            case '/':
+                if(pCrtCh[1] == '/'){
+                    pCrtCh += 2;
+                    while(*pCrtCh && *pCrtCh != '\n' && *pCrtCh != '\r') pCrtCh++;
+                    continue;
+                }
+                pCrtCh++;
+                addTk(DIV);
+                return DIV;
+            case '&':
+                if(pCrtCh[1] == '&'){
+                    pCrtCh += 2;
+                    addTk(AND);
+                    return AND;
+                }
+                tkerr(NULL, "invalid character '&', did you mean '&&'?");
                 break;
-
-            case 4:
-                addTk(EQUAL);
-                return EQUAL;
-
-            case 5:
+            case '|':
+                if(pCrtCh[1] == '|'){
+                    pCrtCh += 2;
+                    addTk(OR);
+                    return OR;
+                }
+                tkerr(NULL, "invalid character '|', did you mean '||'?");
+                break;
+            case '!':
+                if(pCrtCh[1] == '='){
+                    pCrtCh += 2;
+                    addTk(NOTEQ);
+                    return NOTEQ;
+                }
+                pCrtCh++;
+                addTk(NOT);
+                return NOT;
+            case '=':
+                if(pCrtCh[1] == '='){
+                    pCrtCh += 2;
+                    addTk(EQUAL);
+                    return EQUAL;
+                }
+                pCrtCh++;
                 addTk(ASSIGN);
                 return ASSIGN;
+            case '<':
+                if(pCrtCh[1] == '='){
+                    pCrtCh += 2;
+                    addTk(LESSEQ);
+                    return LESSEQ;
+                }
+                pCrtCh++;
+                addTk(LESS);
+                return LESS;
+            case '>':
+                if(pCrtCh[1] == '='){
+                    pCrtCh += 2;
+                    addTk(GREATEREQ);
+                    return GREATEREQ;
+                }
+                pCrtCh++;
+                addTk(GREATER);
+                return GREATER;
+            default:
+                tkerr(NULL, "invalid character '%c'", ch);
         }
     }
 }
