@@ -27,7 +27,7 @@ Token *lastToken = NULL;// end of it
 void err(const char *fmt,...){
     va_list va;
     va_start(va, fmt);
-    fprintf(stderr, "error in line %d: ", tk ? tk->line : line);
+    fprintf(stderr, "error in line %d: ", line);
     vfprintf(stderr, fmt, va);
     fputc('\n', stderr);
     va_end(va);
@@ -59,6 +59,16 @@ Token *addTk(int code){
     lastToken = tk;
     return tk;
 }
+
+char *createString(const char *pStart, const char *pEnd) { // helper func to store identifier names and a way to load the file into a buffer
+    int length = pEnd - pStart;
+    char *str = (char *)malloc(length + 1);
+    if (str == NULL) err("not enough memory");
+    memcpy(str, pStart, length);
+    str[length] = '\0';
+    return str;
+}
+
 
 int getNextToken() {
     int state = 0, nCh;
@@ -125,15 +135,6 @@ int getNextToken() {
                 return ASSIGN;
         }
     }
-}
-
-char *createString(const char *pStart, const char *pEnd) { // helper func to store identifier names and a way to load the file into a buffer
-    int length = pEnd - pStart;
-    char *str = (char *)malloc(length + 1);
-    if (str == NULL) err("not enough memory");
-    memcpy(str, pStart, length);
-    str[length] = '\0';
-    return str;
 }
 
 // loads file into a null-terminated string

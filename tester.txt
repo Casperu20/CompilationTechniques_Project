@@ -1,2 +1,1 @@
-speed = 70;
-break
+1
