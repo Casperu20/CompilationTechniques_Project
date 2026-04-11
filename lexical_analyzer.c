@@ -4,7 +4,14 @@
 #include <ctype.h>
 #include <stdarg.h>
 
-enum{ID, END, CT_INT, ASSIGN, EQUAL, BREAK, CHAR}; // tokens codes
+enum{ID, END,
+    CT_INT, CT_REAL, CT_CHAR, CT_STRING,
+    BREAK, CHAR, DOUBLE, ELSE, FOR, IF, INT, RETURN, STRUCT, VOID, WHILE,
+    COMMA, SEMICOLON, LPAR, RPAR, LBRACKET, RBRACKET, LACC, RACC,
+    ADD, SUB, MUL, DIV, DOT,
+    AND, OR, NOT,
+    ASSIGN, EQUAL, NOTEQ, LESS, LESSEQ, GREATER, GREATEREQ
+}; // tokens codes
 
 typedef struct _Token{
     int code; // code (name)
@@ -61,14 +68,13 @@ Token *addTk(int code){
 }
 
 char *createString(const char *pStart, const char *pEnd) { // helper func to store identifier names and a way to load the file into a buffer
-    int length = pEnd - pStart;
+    int length = (int) (pEnd - pStart);
     char *str = (char *)malloc(length + 1);
     if (str == NULL) err("not enough memory");
-    memcpy(str, pStart, length);
+    memcpy(str, pStart, (size_t)length);
     str[length] = '\0';
     return str;
 }
-
 
 int getNextToken() {
     int state = 0, nCh;
@@ -140,22 +146,102 @@ int getNextToken() {
 // loads file into a null-terminated string
 char *loadFile(const char *fileName) {
     FILE *f = fopen(fileName, "rb");
+    long n;
+    char *buf;
+
     if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *buf = (char *)malloc(n + 1);
+    if(fseek(f, 0, SEEK_END) != 0){
+        fclose(f);
+        return NULL;
+    }
+
+    n = ftell(f);
+    if (n < 0) {
+        fclose(f);
+        return NULL;
+    }
+    if(fseek(f, 0, SEEK_SET) != 0){
+        fclose(f);
+        return NULL;
+    }
+
+    buf = (char *)malloc((size_t)n + 1);
     if (!buf) err("not enough memory");
-    fread(buf, 1, n, f);
+
+    if(fread(buf, 1, (size_t)n, f) != (size_t)n){   
+        free(buf);
+        fclose(f);
+        return NULL;
+    }
     buf[n] = '\0';
     fclose(f);
     return buf;
 }
 
+const char *tokenName(int code) {
+    switch (code) {
+        case ID: return "ID";
+        case END: return "END";
+        case CT_INT: return "CT_INT";
+        case CT_REAL: return "CT_REAL";
+        case CT_CHAR: return "CT_CHAR";
+        case CT_STRING: return "CT_STRING";
+        case BREAK: return "BREAK";
+        case CHAR: return "CHAR";
+        case DOUBLE: return "DOUBLE";
+        case ELSE: return "ELSE";
+        case FOR: return "FOR";
+        case IF: return "IF";
+        case INT: return "INT";
+        case RETURN: return "RETURN";
+        case STRUCT: return "STRUCT";
+        case VOID: return "VOID";
+        case WHILE: return "WHILE";
+        case COMMA: return "COMMA";
+        case SEMICOLON: return "SEMICOLON";
+        case LPAR: return "LPAR";
+        case RPAR: return "RPAR";
+        case LBRACKET: return "LBRACKET";
+        case RBRACKET: return "RBRACKET";
+        case LACC: return "LACC";
+        case RACC: return "RACC";
+        case ADD: return "ADD";
+        case SUB: return "SUB";
+        case MUL: return "MUL";
+        case DIV: return "DIV";
+        case DOT: return "DOT";
+        case AND: return "AND";
+        case OR: return "OR";
+        case NOT: return "NOT";
+        case ASSIGN: return "ASSIGN";
+        case EQUAL: return "EQUAL";
+        case NOTEQ: return "NOTEQ";
+        case LESS: return "LESS";
+        case LESSEQ: return "LESSEQ";
+        case GREATER: return "GREATER";
+        case GREATEREQ: return "GREATEREQ";
+        default: return "UNKNOWN";
+    }
+}
+
 void showTokens(Token *tokens) {
-    for (Token *tk = tokens; tk != NULL; tk = tk->next) {
-        printf("Line %d: Code %d", tk->line, tk->code);
-        if (tk->code == ID) printf(" (%s)", tk->text);
+    Token *tk;
+    for (tk = tokens; tk != NULL; tk = tk->next) {
+        printf("Line %d:\t %s", tk->line, tokenName(tk->code));
+        switch (tk->code) {
+            case ID:
+            case CT_STRING:
+                printf(":%s", tk->text);
+                break;
+            case CT_INT:
+            case CT_CHAR:
+                printf(":%ld", tk->i);
+                break;
+            case CT_REAL:
+                printf(":%g", tk->r);
+                break;
+        }
+        // if (tk->code == ID) printf(" (%s)", tk->text);
         printf("\n");
     }
 }
