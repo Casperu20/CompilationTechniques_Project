@@ -109,279 +109,233 @@ static int decodeEscape(int c){
 }
 
 int getNextToken() {
-    int nCh;
+    int state = 0; // The shared start state '0'
     char ch;
-    const char *pStartCh;
+    const char *pStartCh = pCrtCh; // Mark the beginning of the token
     Token *tk;
+    int charVal; // for char constants
 
     while (1) {
         ch = *pCrtCh;
+        switch (state) {
+            case 0: 
+                if (ch == ' ' || ch == '\r' || ch == '\t') { pCrtCh++; pStartCh = pCrtCh; }
+                else if (ch == '\n') { line++; pCrtCh++; pStartCh = pCrtCh; }
+                else if (ch == 0) { state = 9; } // END 
+                
+                //transitions -> ID si Constants
+                else if (isalpha(ch) || ch == '_') { state = 101; pCrtCh++; } // ID 
+                else if (ch == '0') { state = 103; pCrtCh++; } // 0/Hex/Octal path
+                else if (isdigit(ch) && ch != '0') { state = 108; pCrtCh++; } // Decimal
+                else if (ch == '\'') { state = 116; pCrtCh++; } // Char 
+                else if (ch == '\"') { state = 119; pCrtCh++; } // String
+                
+                // transitions -> delimitatori operatori
+                else if (ch == ',') { state = 1; pCrtCh++; }
+                else if (ch == ';') { state = 2; pCrtCh++; }
+                else if (ch == '(') { state = 3; pCrtCh++; }
+                else if (ch == ')') { state = 4; pCrtCh++; }
+                else if (ch == '[') { state = 5; pCrtCh++; }
+                else if (ch == ']') { state = 6; pCrtCh++; }
+                else if (ch == '{') { state = 7; pCrtCh++; }
+                else if (ch == '}') { state = 8; pCrtCh++; }
+                else if (ch == '+') { state = 10; pCrtCh++; }
+                else if (ch == '-') { state = 11; pCrtCh++; }
+                else if (ch == '*') { state = 12; pCrtCh++; }
+                else if (ch == '/') { 
+                    if (pCrtCh[1] == '/') { // comment -> next!!!
+                        pCrtCh += 2;
+                        while(*pCrtCh && *pCrtCh != '\n' && *pCrtCh != '\r') pCrtCh++;
+                        pStartCh = pCrtCh;
+                    } else { state = 13; pCrtCh++; } 
+                }
+                else if (ch == '.') { state = 14; pCrtCh++; }
+                else if (ch == '&') { state = 15; pCrtCh++; }
+                else if (ch == '|') { state = 17; pCrtCh++; }
+                else if (ch == '=') { state = 19; pCrtCh++; }
+                else if (ch == '!') { state = 22; pCrtCh++; }
+                else if (ch == '<') { state = 25; pCrtCh++; }
+                else if (ch == '>') { state = 28; pCrtCh++; }
+                else tkerr(NULL, "invalid character '%c'", ch);
+                break;
 
-        if (ch == ' ' || ch == '\r' || ch == '\t') {
-            pCrtCh++;
-            continue;
-        }
-        if (ch == '\n') {
-            line++;
-            pCrtCh++;
-            continue;
-        }
-        if (ch == 0) {
-            addTk(END);
-            return END;
-        }
-
-        if (isalpha((unsigned char)ch) || ch == '_') {
-            pStartCh = pCrtCh;
-            pCrtCh++;
-            while(isalnum((unsigned char)*pCrtCh) || *pCrtCh == '_') pCrtCh++;
-            nCh = (int)(pCrtCh - pStartCh);
-
-            int kw = isKeyword(pStartCh, nCh);
-            if(kw != -1){
-                addTk(kw);
-                return kw;
+            // ID & KEYWORD
+            case 101: 
+                if (isalnum(ch) || ch == '_') pCrtCh++; 
+                else state = 102; 
+                break;
+            case 102: {
+                int nCh = (int)(pCrtCh - pStartCh);
+                int kw = isKeyword(pStartCh, nCh);
+                if (kw != -1) return addTk(kw)->code;
+                tk = addTk(ID);
+                tk->text = createString(pStartCh, pCrtCh);
+                return ID;
             }
 
-            tk = addTk(ID);
-            tk->text = createString(pStartCh, pCrtCh);
-            return ID;
-        }
+            // NUMERIC CONSTANTS
+            case 103: // found '0'
+                if (ch == 'x' || ch == 'X') { state = 106; pCrtCh++; }
+                else if (isdigit(ch)) { state = 104; pCrtCh++; }
+                else if (ch == '.') { state = 110; pCrtCh++; }
+                else state = 105; 
+                break;
+            case 104: // octal digits
+                if (isdigit(ch)) pCrtCh++;
+                else state = 105;
+                break;
+            case 106: // hex digits
+                if (isxdigit(ch)) pCrtCh++;
+                else state = 105;
+                break;
+            case 108: // f [1-9]
+                if (isdigit(ch)) pCrtCh++;
+                else if (ch == '.') { state = 110; pCrtCh++; }
+                else if (ch == 'e' || ch == 'E') { state = 112; pCrtCh++; }
+                else state = 105; 
+                break;
+            case 110: //  '.'
+                if (isdigit(ch)) { state = 111; pCrtCh++; }
+                else tkerr(NULL, "invalid real constant");
+                break;
+            case 111: // after decimal .
+                if (isdigit(ch)) pCrtCh++;
+                else if (ch == 'e' || ch == 'E') { state = 112; pCrtCh++; }
+                else state = 115;
+                break;
+            case 112: //  'e'
+                if (ch == '+' || ch == '-') { state = 113; pCrtCh++; }
+                else if (isdigit(ch)) { state = 114; pCrtCh++; }
+                else tkerr(NULL, "invalid exponent");
+                break;
+            case 113: // after + or -
+                if (isdigit(ch)) { state = 114; pCrtCh++; }
+                else tkerr(NULL, "invalid exponent");
+                break;
+            case 114:
+                if (isdigit(ch)) pCrtCh++;
+                else state = 115;
+                break;
 
-        if(isdigit((unsigned char)ch)){
-            char *endptr;
-
-            if(ch == '0' && (pCrtCh[1] == 'x' || pCrtCh[1] == 'X')){
-                pStartCh = pCrtCh;
-                pCrtCh += 2;
-                if(!isxdigit((unsigned char)*pCrtCh)){
-                    tkerr(NULL, "invalid hexadecimal constant");
-                }
-                while(isxdigit((unsigned char)*pCrtCh)) pCrtCh++;
-                tk = addTk(CT_INT);
-                tk->i = strtol(pStartCh, &endptr, 0);
-                return CT_INT;
-            }
-
-            pStartCh = pCrtCh;
-            while(isdigit((unsigned char)*pCrtCh)) pCrtCh++;
-
-            if(*pCrtCh == '.' || *pCrtCh == 'e' || *pCrtCh == 'E'){
-                if(*pCrtCh == '.'){
-                    pCrtCh++;
-                    if(!isdigit((unsigned char)*pCrtCh)){
-                        tkerr(NULL, "invalid real constant");
+            // state-urile finalizatoare:
+            
+            case 105: // accept CT_INT
+                {
+                    char *endptr;
+                    if(pStartCh[0] == '0' && (pCrtCh - pStartCh) > 1){
+                        const char *p = pStartCh + 1;
+                        while(p < pCrtCh){
+                            if(*p < '0' || *p > '7'){
+                                tkerr(NULL, "invalid octal constant");
+                            }
+                            p++;
+                        }
                     }
-                    while(isdigit((unsigned char)*pCrtCh)) pCrtCh++;
+                    tk = addTk(CT_INT);
+                    tk->i = strtol(pStartCh, &endptr, 0);
+                    return CT_INT;
                 }
-                if(*pCrtCh == 'e' || *pCrtCh == 'E'){
-                    pCrtCh++;
-                    if(*pCrtCh == '+' || *pCrtCh == '-') pCrtCh++;
-                    if(!isdigit((unsigned char)*pCrtCh)){
-                        tkerr(NULL, "invalid exponent in real constant");
-                    }
-                    while(isdigit((unsigned char)*pCrtCh)) pCrtCh++;
-                }
-
+            case 115: // accept CT_REAL
                 tk = addTk(CT_REAL);
-                tk->r = strtod(pStartCh, &endptr);
+                tk->r = strtod(pStartCh, NULL);
                 return CT_REAL;
-            }
 
-            if(pStartCh[0] == '0' && (pCrtCh - pStartCh) > 1){
-                const char *p = pStartCh + 1;
-                while(p < pCrtCh){
-                    if(*p < '0' || *p > '7'){
-                        tkerr(NULL, "invalid octal constant");
-                    }
-                    p++;
-                }
-            }
-
-            tk = addTk(CT_INT);
-            tk->i = strtol(pStartCh, &endptr, 0);
-            return CT_INT;
-        }
-
-        if(ch == '\''){
-            int c;
-            pCrtCh++;
-            if(*pCrtCh == '\\'){
-                pCrtCh++;
-                c = decodeEscape((unsigned char)*pCrtCh);
-                if(c == -1) tkerr(NULL, "invalid escape sequence in char constant");
-                pCrtCh++;
-            }else{
-                if(*pCrtCh == '\'' || *pCrtCh == '\n' || *pCrtCh == '\r' || *pCrtCh == 0){
-                    tkerr(NULL, "invalid char constant");
-                }
-                c = (unsigned char)*pCrtCh;
-                pCrtCh++;
-            }
-            if(*pCrtCh != '\'') tkerr(NULL, "missing closing quote in char constant");
-            pCrtCh++;
-            tk = addTk(CT_CHAR);
-            tk->i = c;
-            return CT_CHAR;
-        }
-
-        if(ch == '"'){
-            char *buf, *dst;
-            size_t cap = 16, len = 0;
-            pCrtCh++;
-            buf = (char *)malloc(cap);
-            if(!buf) err("not enough memory");
-
-            while(*pCrtCh != '"'){
-                int c;
-                if(*pCrtCh == 0 || *pCrtCh == '\n' || *pCrtCh == '\r'){
-                    free(buf);
-                    tkerr(NULL, "unterminated string literal");
-                }
-                if(*pCrtCh == '\\'){
-                    pCrtCh++;
-                    c = decodeEscape((unsigned char)*pCrtCh);
-                    if(c == -1){
-                        free(buf);
-                        tkerr(NULL, "invalid escape sequence in string");
-                    }
-                    pCrtCh++;
-                }else{
-                    c = (unsigned char)*pCrtCh;
-                    pCrtCh++;
-                }
-
-                if(len + 1 >= cap){
-                    cap *= 2;
-                    dst = (char *)realloc(buf, cap);
-                    if(!dst){
-                        free(buf);
-                        err("not enough memory");
-                    }
-                    buf = dst;
-                }
-                buf[len++] = (char)c;
-            }
-            pCrtCh++;
-            buf[len] = '\0';
-
-            tk = addTk(CT_STRING);
-            tk->text = buf;
-            return CT_STRING;
-        }
-
-        switch (ch) { // now inside the switch ill handle operators and separators
-            case ',':
-                pCrtCh++;
-                addTk(COMMA);
-                return COMMA;
-            case ';':
-                pCrtCh++;
-                addTk(SEMICOLON);
-                return SEMICOLON;
-            case '(':
-                pCrtCh++;
-                addTk(LPAR);
-                return LPAR;
-            case ')':
-                pCrtCh++;
-                addTk(RPAR);
-                return RPAR;
-            case '[':
-                pCrtCh++;
-                addTk(LBRACKET);
-                return LBRACKET;
-            case ']':
-                pCrtCh++;
-                addTk(RBRACKET);
-                return RBRACKET;
-            case '{':
-                pCrtCh++;
-                addTk(LACC);
-                return LACC;
-            case '}':
-                pCrtCh++;
-                addTk(RACC);
-                return RACC;
-            case '+':
-                pCrtCh++;
-                addTk(ADD);
-                return ADD;
-            case '-':
-                pCrtCh++;
-                addTk(SUB);
-                return SUB;
-            case '*':
-                pCrtCh++;
-                addTk(MUL);
-                return MUL;
-            case '.':
-                pCrtCh++;
-                addTk(DOT);
-                return DOT;
-            case '/':
-                if(pCrtCh[1] == '/'){
-                    pCrtCh += 2;
-                    while(*pCrtCh && *pCrtCh != '\n' && *pCrtCh != '\r') pCrtCh++;
-                    continue;
-                }
-                pCrtCh++;
-                addTk(DIV);
-                return DIV;
-            case '&':
-                if(pCrtCh[1] == '&'){
-                    pCrtCh += 2;
-                    addTk(AND);
-                    return AND;
-                }
-                tkerr(NULL, "invalid character '&', did you mean '&&'?");
+            // CHAR CONSTANT
+            case 116: // after '
+                if (ch == '\\') { state = 117; pCrtCh++; }
+                else if (ch == '\'' || ch == '\n' || ch == '\r' || ch == 0) tkerr(NULL, "invalid char constant");
+                else { charVal = ch; state = 118; pCrtCh++; }
                 break;
-            case '|':
-                if(pCrtCh[1] == '|'){
-                    pCrtCh += 2;
-                    addTk(OR);
-                    return OR;
-                }
-                tkerr(NULL, "invalid character '|', did you mean '||'?");
+            case 117: // after '\'
+                charVal = decodeEscape(ch);
+                if (charVal == -1) tkerr(NULL, "invalid escape sequence in char constant");
+                state = 118; pCrtCh++;
                 break;
-            case '!':
-                if(pCrtCh[1] == '='){
-                    pCrtCh += 2;
-                    addTk(NOTEQ);
-                    return NOTEQ;
-                }
+            case 118: // expect '
+                if (ch != '\'') tkerr(NULL, "missing closing quote in char constant");
                 pCrtCh++;
-                addTk(NOT);
-                return NOT;
-            case '=':
-                if(pCrtCh[1] == '='){
-                    pCrtCh += 2;
-                    addTk(EQUAL);
-                    return EQUAL;
+                tk = addTk(CT_CHAR);
+                tk->i = charVal;
+                return CT_CHAR;
+
+            // STRING CONSTANT
+            case 119: // after "
+                {
+                    char *buf, *dst;
+                    size_t cap = 16, len = 0;
+                    buf = (char *)malloc(cap);
+                    if(!buf) err("not enough memory");
+                    while(*pCrtCh != '"'){
+                        int c;
+                        if(*pCrtCh == 0 || *pCrtCh == '\n' || *pCrtCh == '\r'){
+                            free(buf);
+                            tkerr(NULL, "unterminated string literal");
+                        }
+                        if(*pCrtCh == '\\'){
+                            pCrtCh++;
+                            c = decodeEscape(*pCrtCh);
+                            if(c == -1){
+                                free(buf);
+                                tkerr(NULL, "invalid escape sequence in string");
+                            }
+                            pCrtCh++;
+                        }else{
+                            c = *pCrtCh;
+                            pCrtCh++;
+                        }
+                        if(len + 1 >= cap){
+                            cap *= 2;
+                            dst = (char *)realloc(buf, cap);
+                            if(!dst){
+                                free(buf);
+                                err("not enough memory");
+                            }
+                            buf = dst;
+                        }
+                        buf[len++] = (char)c;
+                    }
+                    pCrtCh++;
+                    buf[len] = '\0';
+                    tk = addTk(CT_STRING);
+                    tk->text = buf;
+                    return CT_STRING;
                 }
-                pCrtCh++;
-                addTk(ASSIGN);
-                return ASSIGN;
-            case '<':
-                if(pCrtCh[1] == '='){
-                    pCrtCh += 2;
-                    addTk(LESSEQ);
-                    return LESSEQ;
-                }
-                pCrtCh++;
-                addTk(LESS);
-                return LESS;
-            case '>':
-                if(pCrtCh[1] == '='){
-                    pCrtCh += 2;
-                    addTk(GREATEREQ);
-                    return GREATEREQ;
-                }
-                pCrtCh++;
-                addTk(GREATER);
-                return GREATER;
-            default:
-                tkerr(NULL, "invalid character '%c'", ch);
+
+            // OPERATORS 
+            case 1: addTk(COMMA); return COMMA;
+            case 2: addTk(SEMICOLON); return SEMICOLON;
+            case 3: addTk(LPAR); return LPAR;
+            case 4: addTk(RPAR); return RPAR;
+            case 5: addTk(LBRACKET); return LBRACKET;
+            case 6: addTk(RBRACKET); return RBRACKET;
+            case 7: addTk(LACC); return LACC;
+            case 8: addTk(RACC); return RACC;
+            case 9: addTk(END); return END;
+            case 10: addTk(ADD); return ADD;
+            case 11: addTk(SUB); return SUB;
+            case 12: addTk(MUL); return MUL;
+            case 13: addTk(DIV); return DIV;
+            case 14: addTk(DOT); return DOT;
+            case 15: // inainte am avut &
+                if (ch == '&') { pCrtCh++; addTk(AND); return AND; }
+                else tkerr(NULL, "invalid character '&', did you mean '&&'?");
+                break;
+            case 17: // |
+                if (ch == '|') { pCrtCh++; addTk(OR); return OR; }
+                else tkerr(NULL, "invalid character '|', did you mean '||'?");
+                break;
+            case 19: // =
+                if (ch == '=') { pCrtCh++; addTk(EQUAL); return EQUAL; }
+                else { addTk(ASSIGN); return ASSIGN; }
+            case 22: // !
+                if (ch == '=') { pCrtCh++; addTk(NOTEQ); return NOTEQ; }
+                else { addTk(NOT); return NOT; }
+            case 25: // <
+                if (ch == '=') { pCrtCh++; addTk(LESSEQ); return LESSEQ; }
+                else { addTk(LESS); return LESS; }
+            case 28: // >
+                if (ch == '=') { pCrtCh++; addTk(GREATEREQ); return GREATEREQ; }
+                else { addTk(GREATER); return GREATER; }
         }
     }
 }
