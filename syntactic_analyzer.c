@@ -98,6 +98,12 @@ int varDef() {
 
     arrayDecl(); // optional
 
+    // Handle comma-separated declarators (e.g., int i, v[5], s;)
+    while (consume(COMMA)) {
+        if (!consume(ID)) tkerr(crtTk, "missing ID after comma");
+        arrayDecl(); // optional
+    }
+
     if (!consume(SEMICOLON))
         tkerr(crtTk, "missing ;");
 
@@ -227,11 +233,9 @@ int stm() {
     }
 
     crtTk = startTk;
-    expr();
-    if (consume(SEMICOLON)) return 1;
-
-    crtTk = startTk;
-    return 0;
+    expr();  // optional
+    if (!consume(SEMICOLON)) tkerr(crtTk, "missing ;");
+    return 1;
 }
 
 int expr() {
