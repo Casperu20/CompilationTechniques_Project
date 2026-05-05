@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "atomc.h"
 
 /* parser globals */
 Token *crtTk;

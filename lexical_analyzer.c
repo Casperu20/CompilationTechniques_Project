@@ -3,25 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
-
-enum{ID, END,
-    CT_INT, CT_REAL, CT_CHAR, CT_STRING,
-    BREAK, CHAR, DOUBLE, ELSE, FOR, IF, INT, RETURN, STRUCT, VOID, WHILE,
-    COMMA, SEMICOLON, LPAR, RPAR, LBRACKET, RBRACKET, LACC, RACC,
-    ADD, SUB, MUL, DIV, DOT,
-    AND, OR, NOT, ASSIGN, EQUAL, NOTEQ, LESS, LESSEQ, GREATER, GREATEREQ
-}; // tokens codes
-
-typedef struct _Token{
-    int code; // code (name)
-    union{
-        char *text; // used for ID, CT_STRING (dynamically allocated)
-        long int i; // used for CT_INT, CT_CHAR
-        double r; // used for CT_REAL
-    };
-    int line; // the input file line
-    struct _Token *next; // link to the next token
-}Token;
+#include "atomc.h"
 
 const char *pCrtCh;     // pointer to current character in the input string 
 int line = 1;           // current line number 
@@ -455,8 +437,7 @@ void freeTokens(Token *tokens) {
     }
 }
 
-// for testing the syntactic_analyzer:
-#include "syntactic_analyzer.c"
+void parse();
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
