@@ -455,6 +455,9 @@ void freeTokens(Token *tokens) {
     }
 }
 
+// for testing the syntactic_analyzer:
+#include "syntactic_analyzer.c"
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "usage: %s <source_file>\n", argv[0]);
@@ -471,7 +474,9 @@ int main(int argc, char *argv[]) {
 
     while (getNextToken() != END); // fill the tokens list 
 
-    showTokens(tokens); 
+    // showTokens(tokens); // optional: display the tokens (maybe debugging later but already tested)
+
+    parse();
 
     freeTokens(tokens);
     free(buffer);
