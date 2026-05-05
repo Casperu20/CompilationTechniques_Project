@@ -233,9 +233,15 @@ int stm() {
     }
 
     crtTk = startTk;
-    expr();  // optional
-    if (!consume(SEMICOLON)) tkerr(crtTk, "missing ;");
-    return 1;
+    if (consume(SEMICOLON)) return 1;
+
+    if (expr()) {
+        if (!consume(SEMICOLON)) tkerr(crtTk, "missing ;");
+        return 1;
+    }
+
+    crtTk = startTk;
+    return 0;
 }
 
 int expr() {
