@@ -18,14 +18,21 @@ int stmCompound();
 int expr();
 int exprAssign();
 int exprOr();
+int exprOrAux();
 int exprAnd();
+int exprAndAux();
 int exprEq();
+int exprEqAux();
 int exprRel();
+int exprRelAux();
 int exprAdd();
+int exprAddAux();
 int exprMul();
+int exprMulAux();
 int exprCast();
 int exprUnary();
 int exprPostfix();
+int exprPostfixAux();
 int exprPrimary();
 
 int consume(int code) {
@@ -75,11 +82,12 @@ int typeBase() {
     return 0;
 }
 
+// as well improvement to accept exprs inside
 int arrayDecl() {
     if (!consume(LBRACKET)) return 0;
 
     // consume(CT_INT); // optional
-    expr();
+    expr(); // we may have nothing, 20, or 20/4 or n+1 idk
 
     if (!consume(RBRACKET))
         tkerr(crtTk, "missing ]");
@@ -87,6 +95,7 @@ int arrayDecl() {
     return 1;
 }
 
+// improvement as in C we should have: varDef: typeBase ID arrayDecl? (ASSIGN expr)? SEMICOLON
 int varDef() {
     Token *startTk = crtTk;
 
@@ -97,12 +106,29 @@ int varDef() {
         return 0;
     }
 
-    arrayDecl(); // optional
+    arrayDecl(); // ? = optional
 
-    // Handle comma-separated declarators (e.g., int i, v[5], s;)
+    // optional initialization: int b = 5 + 3 * 2 etc
+    if (consume(ASSIGN)) {
+            if (!expr()){
+                tkerr(crtTk, "missing expression after =");
+            }
+        }
+
+    // comma-separated declarators -->  int i, v[5], s;
     while (consume(COMMA)) {
-        if (!consume(ID)) tkerr(crtTk, "missing ID after comma");
-        arrayDecl(); // optional
+        if (!consume(ID)){
+            tkerr(crtTk, "missing ID after comma");
+        }
+        arrayDecl(); // ? = optional
+
+        // optional initializer --> int i = 5, v[5] = {1,2,3,4,5}, s = "hello";
+
+        if (consume(ASSIGN)) {
+            if (!expr()){
+                tkerr(crtTk, "missing expression after =");
+            }
+        }
     }
 
     if (!consume(SEMICOLON))
@@ -264,67 +290,135 @@ int exprAssign() {
 }
 
 int exprOr() {
-    if (!exprAnd()) return 0;
-    while (consume(OR)) {
-        if (!exprAnd()) tkerr(crtTk, "missing expression after ||");
+    if (exprAnd()) {
+        if (exprOrAux()) {
+            return 1;
+        }
     }
-    return 1;
+    return 0;
+}
+
+/* exprOrAux: OR exprAnd exprOrAux | epsilon */
+int exprOrAux() {
+    if (consume(OR)) {
+        if (exprAnd()) {
+            if (exprOrAux()) {
+                return 1;
+            }
+        }
+        tkerr(crtTk, "missing expression after ||");
+    }
+    return 1; /* epsilon */
 }
 
 int exprAnd() {
-    if (!exprEq()) return 0;
-    while (consume(AND)) {
-        if (!exprEq()) tkerr(crtTk, "missing expression after &&");
+    if (exprEq()) {
+        if (exprAndAux()) {
+            return 1;
+        }
     }
-    return 1;
+    return 0;
+}
+
+/* exprAndAux: AND exprEq exprAndAux | epsilon */
+int exprAndAux() {
+    if (consume(AND)) {
+        if (exprEq()) {
+            if (exprAndAux()) {
+                return 1;
+            }
+        }
+        tkerr(crtTk, "missing expression after &&");
+    }
+    return 1; /* epsilon */
 }
 
 int exprEq() {
-    if (!exprRel()) return 0;
-    while (1) {
-        if (consume(EQUAL) || consume(NOTEQ)) {
-            if (!exprRel()) tkerr(crtTk, "missing expression in equality operator");
-        } else {
-            break;
+    if (exprRel()) {
+        if (exprEqAux()) {
+            return 1;
         }
     }
-    return 1;
+    return 0;
+}
+
+/* exprEqAux: (EQUAL | NOTEQ) exprRel exprEqAux | epsilon */
+int exprEqAux() {
+    if (consume(EQUAL) || consume(NOTEQ)) {
+        if (exprRel()) {
+            if (exprEqAux()) {
+                return 1;
+            }
+        }
+        tkerr(crtTk, "missing expression after equality operator");
+    }
+    return 1; /* epsilon */
 }
 
 int exprRel() {
-    if (!exprAdd()) return 0;
-    while (1) {
-        if (consume(LESS) || consume(LESSEQ) || consume(GREATER) || consume(GREATEREQ)) {
-            if (!exprAdd()) tkerr(crtTk, "missing expression in relational operator");
-        } else {
-            break;
+    if (exprAdd()) {
+        if (exprRelAux()) {
+            return 1;
         }
     }
-    return 1;
+    return 0;
+}
+
+/* exprRelAux: (LESS | LESSEQ | GREATER | GREATEREQ) exprAdd exprRelAux | epsilon */
+int exprRelAux() {
+    if (consume(LESS) || consume(LESSEQ) || consume(GREATER) || consume(GREATEREQ)) {
+        if (exprAdd()) {
+            if (exprRelAux()) {
+                return 1;
+            }
+        }
+        tkerr(crtTk, "missing expression after relational operator");
+    }
+    return 1; /* epsilon */
 }
 
 int exprAdd() {
-    if (!exprMul()) return 0;
-    while (1) {
-        if (consume(ADD) || consume(SUB)) {
-            if (!exprMul()) tkerr(crtTk, "missing expression after + or -");
-        } else {
-            break;
+    if (exprMul()) {
+        if (exprAddAux()) {
+            return 1;
         }
     }
-    return 1;
+    return 0;
+}
+
+/* exprAddAux: (ADD | SUB) exprMul exprAddAux | epsilon */
+int exprAddAux() {
+    if (consume(ADD) || consume(SUB)) {
+        if (exprMul()) {
+            if (exprAddAux()) {
+                return 1;
+            }
+        }
+        tkerr(crtTk, "missing expression after + or -");
+    }
+    return 1; /* epsilon */
 }
 
 int exprMul() {
-    if (!exprCast()) return 0;
-    while (1) {
-        if (consume(MUL) || consume(DIV)) {
-            if (!exprCast()) tkerr(crtTk, "missing expression after * or /");
-        } else {
-            break;
+    if (exprCast()) {
+        if (exprMulAux()) {
+            return 1;
         }
     }
-    return 1;
+    return 0;
+}
+
+/* exprMulAux: (MUL | DIV) exprCast exprMulAux | epsilon */
+int exprMulAux() {
+    if (consume(MUL) || consume(DIV)) {
+        if (exprCast()) {
+            if (exprMulAux()) {
+                return 1;
+            }
+        }
+        tkerr(crtTk, "missing expression after * or /");
+    }
+    return 1; /* epsilon */
 }
 
 int exprCast() {
@@ -356,28 +450,41 @@ int exprUnary() {
 }
 
 int exprPostfix() {
-    if (!exprPrimary()) return 0;
-
-    while (1) {
-        Token *startTk = crtTk;
-
-        if (consume(LBRACKET)) {
-            if (!expr()) tkerr(crtTk, "missing expression inside []");
-            if (!consume(RBRACKET)) tkerr(crtTk, "missing ] in postfix expression");
-            continue;
+    if (exprPrimary()) {
+        if (exprPostfixAux()) {
+            return 1;
         }
+    }
+    return 0;
+}
 
-        crtTk = startTk;
-        if (consume(DOT)) {
-            if (!consume(ID)) tkerr(crtTk, "missing ID after .");
-            continue;
+/* exprPostfixAux: LBRACKET expr RBRACKET exprPostfixAux | DOT ID exprPostfixAux | epsilon */
+int exprPostfixAux() {
+    if (consume(LBRACKET)) {
+        if (expr()) {
+            if (consume(RBRACKET)) {
+                if (exprPostfixAux()) {
+                    return 1;
+                }
+            } else {
+                tkerr(crtTk, "missing ] in postfix expression");
+            }
+        } else {
+            tkerr(crtTk, "missing expression inside []");
         }
-
-        crtTk = startTk;
-        break;
     }
 
-    return 1;
+    if (consume(DOT)) {
+        if (consume(ID)) {
+            if (exprPostfixAux()) {
+                return 1;
+            }
+        } else {
+            tkerr(crtTk, "missing ID after .");
+        }
+    }
+
+    return 1; /* epsilon */
 }
 
 int exprPrimary() {
