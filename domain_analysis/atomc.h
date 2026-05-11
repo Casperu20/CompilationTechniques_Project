@@ -1,0 +1,31 @@
+#ifndef ATOMC_H
+#define ATOMC_H
+
+enum {
+    ID, END,
+    CT_INT, CT_REAL, CT_CHAR, CT_STRING,
+    BREAK, CHAR, DOUBLE, ELSE, FOR, IF, INT, RETURN, STRUCT, VOID, WHILE,
+    COMMA, SEMICOLON, LPAR, RPAR, LBRACKET, RBRACKET, LACC, RACC,
+    ADD, SUB, MUL, DIV, DOT,
+    AND, OR, NOT, ASSIGN, EQUAL, NOTEQ, LESS, LESSEQ, GREATER, GREATEREQ
+};
+
+typedef struct _Token {
+    int code;
+    union {
+        char *text;
+        long int i;
+        double r;
+    };
+    int line;
+    struct _Token *next;
+} Token;
+
+extern Token *tokens;
+
+int getNextToken();
+void tkerr(const Token *tk, const char *fmt, ...);
+void showTokens(Token *tokens);
+void freeTokens(Token *tokens);
+
+#endif

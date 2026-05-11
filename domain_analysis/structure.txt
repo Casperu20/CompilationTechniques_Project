@@ -1,0 +1,131 @@
+1. Struct definition
+
+For:
+
+struct Pt {
+    int x;
+    int y;
+};
+
+-> must:
+
+- check that Pt is not already defined in the current domain
+- add Pt as a struct symbol
+- open a new domain for its members
+- set owner = Pt
+- parse varDef* as struct members
+- close the domain after }
+
+The rule says the struct name must be unique in the current domain, and inside the struct two fields cannot have the same name.
+
+2. Variable definition
+
+For:
+
+int x;
+struct Pt p;
+
+-> must:
+
+- compute the type using typeBase + arrayDecl
+- check variable name is unique in current domain
+- add variable symbol
+- attach it either to global memory, current function locals, or current struct members
+
+The PDF also says vector variables must have a specified dimension, so strict AtomC rejects int v[];.
+
+- decide later whether to keep allowing:
+
+int v[];
+int b[a + 2];
+int x = 5;
+
+For pure PDF domain analysis, array size is only CT_INT, not full expr.
+
+3. Type base
+
+->  current:
+
+int typeBase()
+
+-> must become:
+
+int typeBase(Type *t)
+
+So it can return the parsed type.
+
+Example logic:
+
+INT       -> t->tb = TB_INT
+DOUBLE    -> t->tb = TB_DOUBLE
+CHAR      -> t->tb = TB_CHAR
+STRUCT ID -> t->tb = TB_STRUCT and the struct must already exist
+
+The domain rules explicitly say that if the base type is a struct, it must already be defined before use.
+
+4. Function definition
+
+For:
+
+int f(int x) {
+    int y;
+}
+
+-> must:
+
+- check function name is unique in current domain
+- add function symbol
+- set owner = function
+- push function domain immediately after (
+- add parameters both to current domain and to function params list
+- parse body with stmCompound(false)
+- drop function domain after body
+
+Important detail from the PDF: the function local domain starts immediately after (, and the function body {...} does not create a new subdomain for the function body itself.
+
+5. Function parameters
+
+For:
+
+int f(int x, int v[10])
+
+-> must:
+
+- check parameter name is unique in current domain
+- add parameter symbol
+- add it also to owner->fn.params
+- if parameter is array, erase the size: int v[10] becomes int v[]
+
+The domain-rules PDF says exactly that array parameters may have a size, but the size is erased.
+
+6. Compound statements
+
+->  current:
+
+int stmCompound()
+
+-> must become:
+
+int stmCompound(int newDomain)
+
+Because:
+
+stm: stmCompound(true)
+fnDef: stmCompound(false)
+
+
+
+BUILD steps:
+1. Add Type, Symbol, Symbols structures.
+2. Add symbol table helper functions:
+   - initSymbols
+   - addSymbol
+   - findSymbol
+   - findSymbolInDomain
+   - deleteSymbolsAfter
+   - pushDomain
+   - dropDomain
+3. Change typeBase(Type *t).
+4. Change arrayDecl(Type *t).
+5. Change structDef(), varDef(), fnDef(), fnParam(), stmCompound(newDomain).
+6. Add final print of symbol table.
