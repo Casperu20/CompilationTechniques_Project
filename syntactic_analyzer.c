@@ -78,7 +78,8 @@ int typeBase() {
 int arrayDecl() {
     if (!consume(LBRACKET)) return 0;
 
-    consume(CT_INT); // optional
+    // consume(CT_INT); // optional
+    expr();
 
     if (!consume(RBRACKET))
         tkerr(crtTk, "missing ]");

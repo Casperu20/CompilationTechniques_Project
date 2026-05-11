@@ -202,21 +202,25 @@ int getNextToken() {
             // state-urile finalizatoare:
             
             case 105: // accept CT_INT
-                {
-                    char *endptr;
-                    if(pStartCh[0] == '0' && (pCrtCh - pStartCh) > 1){
-                        const char *p = pStartCh + 1;
-                        while(p < pCrtCh){
-                            if(*p < '0' || *p > '7'){
-                                tkerr(NULL, "invalid octal constant");
-                            }
-                            p++;
+            {
+                char *endptr;
+                // Logic Fix: Only validate as octal if it's NOT a hex constant (0x...)
+                if(pStartCh[0] == '0' && (pCrtCh - pStartCh) > 1 && 
+                   pStartCh[1] != 'x' && pStartCh[1] != 'X'){
+                    
+                    const char *p = pStartCh + 1;
+                    while(p < pCrtCh){
+                        if(*p < '0' || *p > '7'){
+                            tkerr(NULL, "invalid octal constant");
                         }
+                        p++;
                     }
-                    tk = addTk(CT_INT);
-                    tk->i = strtol(pStartCh, &endptr, 0);
-                    return CT_INT;
                 }
+                tk = addTk(CT_INT);
+                // strtol with base 0 correctly handles decimal, octal, and hex prefixes
+                tk->i = strtol(pStartCh, &endptr, 0); 
+                return CT_INT;
+            }
             case 115: // accept CT_REAL
                 tk = addTk(CT_REAL);
                 tk->r = strtod(pStartCh, NULL);
