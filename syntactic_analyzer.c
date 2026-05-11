@@ -161,7 +161,9 @@ int structDef() {
                     tkerr(crtTk, "missing } in struct definition");
                 }
             } else {
-                tkerr(crtTk, "missing { in struct definition");
+                // NO ERROR here, bcs variable declaration: struct Pt points[20/4+5]; -->  varDef() try again
+                crtTk = startTk;
+                return 0;
             }
         } else {
             tkerr(crtTk, "missing struct name");
