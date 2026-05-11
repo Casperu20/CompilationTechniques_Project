@@ -93,6 +93,7 @@ int arrayDecl() {
     return 1;
 }
 
+// in real C we should have: varDef: typeBase ID arrayDecl? (ASSIGN expr)? SEMICOLON
 int varDef() {
     Token *startTk = crtTk;
 
@@ -103,12 +104,29 @@ int varDef() {
         return 0;
     }
 
-    arrayDecl(); // optional
+    arrayDecl(); // ? = optional
 
-    // Handle comma-separated declarators (e.g., int i, v[5], s;)
+    // optional initialization: int b = 5 + 3 * 2 etc
+    if (consume(ASSIGN)) {
+            if (!expr()){
+                tkerr(crtTk, "missing expression after =");
+            }
+        }
+
+    // comma-separated declarators -->  int i, v[5], s;
     while (consume(COMMA)) {
-        if (!consume(ID)) tkerr(crtTk, "missing ID after comma");
-        arrayDecl(); // optional
+        if (!consume(ID)){
+            tkerr(crtTk, "missing ID after comma");
+        }
+        arrayDecl(); // ? = optional
+
+        // optional initializer --> int i = 5, v[5] = {1,2,3,4,5}, s = "hello";
+
+        if (consume(ASSIGN)) {
+            if (!expr()){
+                tkerr(crtTk, "missing expression after =");
+            }
+        }
     }
 
     if (!consume(SEMICOLON))

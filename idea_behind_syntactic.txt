@@ -86,3 +86,46 @@
         f()
         f(a, b)
 */
+
+Future implementations:
+
+- for example:
+int v[5] = {1, 2, 3, 4, 5}
+- i need a new grammar rule: initializer: expr | LACC expr ( COMMA expr )* RACC
+
+then --> varDefL typeBase ID arrayDecl? ( ASSIGN initializer )? SEMICOLON
+
+HOW?
+
+int initializer(){
+    if (expr()){
+        return 1;
+    }
+
+    if(consume(LACC)){
+        if(!expr()){
+            tkerr(crtTk, "missing expression in initializer list");
+        }
+
+        while(consume(COMMA)){
+            if(!expr()){
+                tkerr(crtTk, "missing expression after comma in initializer list");
+            }
+        }
+
+        if(!consume(RACC)){
+            tkerr(crtTk, "missing RACC in initializer list");
+        }
+
+        return 1;
+    }
+
+    return 0;
+}
+
+si in varDef:
+if(consume(ASSIGN)){
+    if(!initializer()){
+        tkerr(crtTk, "invalid initializer after = ");
+    }
+}
