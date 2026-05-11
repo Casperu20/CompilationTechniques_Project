@@ -4,6 +4,10 @@ struct Pt{
 
 struct Pt		points[20/4+5];
 
+int a = 5 + 3;
+
+int b[a + 2];
+
 int		count()
 {
 	int		i,n;

@@ -82,10 +82,12 @@ int typeBase() {
     return 0;
 }
 
+// as well improvement to accept exprs inside
 int arrayDecl() {
     if (!consume(LBRACKET)) return 0;
 
-    consume(CT_INT); // optional
+    // consume(CT_INT); // optional
+    expr(); // we may have nothing, 20, or 20/4 or n+1 idk
 
     if (!consume(RBRACKET))
         tkerr(crtTk, "missing ]");
@@ -93,7 +95,7 @@ int arrayDecl() {
     return 1;
 }
 
-// in real C we should have: varDef: typeBase ID arrayDecl? (ASSIGN expr)? SEMICOLON
+// improvement as in C we should have: varDef: typeBase ID arrayDecl? (ASSIGN expr)? SEMICOLON
 int varDef() {
     Token *startTk = crtTk;
 
