@@ -37,6 +37,11 @@ int exprPostfix();
 int exprPostfixAux();
 int exprPrimary();
 
+/* tracks the type of the most recent primary/postfix expression,
+ * used for struct field access checking in exprPostfixAux. */
+static Type crtExprType;
+static int crtExprTyped = 0;
+
 int consume(int code) {
     if (crtTk->code == code) {
         consumedTk = crtTk;
@@ -739,8 +744,19 @@ int exprPostfix() {
 /* exprPostfixAux: LBRACKET expr RBRACKET exprPostfixAux | DOT ID exprPostfixAux | epsilon */
 int exprPostfixAux() {
     if (consume(LBRACKET)) {
+        /* save/restore around inner expr() so nested expressions
+         * don't clobber the postfix-chain's current type */
+        Type savedType = crtExprType;
+        int savedTyped = crtExprTyped;
+
         if (expr()) {
             if (consume(RBRACKET)) {
+                /* indexing: result is element type (drop one array level) */
+                crtExprType = savedType;
+                crtExprTyped = savedTyped;
+                if (crtExprTyped) {
+                    crtExprType.nElements = -1;
+                }
                 if (exprPostfixAux()) {
                     return 1;
                 }
@@ -754,6 +770,22 @@ int exprPostfixAux() {
 
     if (consume(DOT)) {
         if (consume(ID)) {
+            Token *tkField = consumedTk;
+
+            if (crtExprTyped) {
+                if (crtExprType.typeBase != TB_STRUCT || !crtExprType.s) {
+                    tkerr(tkField, "field access on non-struct type: %s", tkField->text);
+                }
+                {
+                    Symbol *field = findSymbolInList(&crtExprType.s->members, tkField->text);
+                    if (!field) {
+                        tkerr(tkField, "undefined struct member: %s", tkField->text);
+                    }
+                    crtExprType = field->type;
+                    crtExprTyped = 1;
+                }
+            }
+
             if (exprPostfixAux()) {
                 return 1;
             }
@@ -769,34 +801,76 @@ int exprPrimary() {
     Token *startTk = crtTk;
 
     if (consume(ID)) {
+        Token *tkName = consumedTk;
+        Symbol *s = findSymbol(&symbols, tkName->text);
+
+        if (!s) {
+            tkerr(tkName, "undefined symbol: %s", tkName->text);
+        }
+
         if (consume(LPAR)) {
+            /* function call */
+            if (s->cls != CLS_FUNC && s->cls != CLS_EXTFUNC) {
+                tkerr(tkName, "not a function: %s", tkName->text);
+            }
+
             if (expr()) {
                 while (consume(COMMA)) {
                     if (!expr()) tkerr(crtTk, "missing expression after ,");
                 }
             }
             if (!consume(RPAR)) tkerr(crtTk, "missing ) in function call");
+
+            /* result type is function return type */
+            crtExprType = s->type;
+            crtExprTyped = 1;
+        } else {
+            /* plain identifier use */
+            if (s->cls == CLS_FUNC || s->cls == CLS_EXTFUNC) {
+                tkerr(tkName, "function used as value: %s", tkName->text);
+            }
+            if (s->cls == CLS_STRUCT) {
+                tkerr(tkName, "struct name used as value: %s", tkName->text);
+            }
+            crtExprType = s->type;
+            crtExprTyped = 1;
         }
         return 1;
     }
 
     crtTk = startTk;
     if (consume(CT_INT)) {
+        crtExprType.typeBase = TB_INT;
+        crtExprType.s = NULL;
+        crtExprType.nElements = -1;
+        crtExprTyped = 1;
         return 1;
     }
 
     crtTk = startTk;
     if (consume(CT_REAL)) {
+        crtExprType.typeBase = TB_DOUBLE;
+        crtExprType.s = NULL;
+        crtExprType.nElements = -1;
+        crtExprTyped = 1;
         return 1;
     }
 
     crtTk = startTk;
     if (consume(CT_CHAR)) {
+        crtExprType.typeBase = TB_CHAR;
+        crtExprType.s = NULL;
+        crtExprType.nElements = -1;
+        crtExprTyped = 1;
         return 1;
     }
 
     crtTk = startTk;
     if (consume(CT_STRING)) {
+        crtExprType.typeBase = TB_CHAR;
+        crtExprType.s = NULL;
+        crtExprType.nElements = 0;
+        crtExprTyped = 1;
         return 1;
     }
 
@@ -804,6 +878,7 @@ int exprPrimary() {
     if (consume(LPAR)) {
         if (!expr()) tkerr(crtTk, "missing expression in ()");
         if (!consume(RPAR)) tkerr(crtTk, "missing )");
+        /* crtExprType is whatever expr() set */
         return 1;
     }
 
